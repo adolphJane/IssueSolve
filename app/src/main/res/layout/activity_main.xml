@@ -6,6 +6,15 @@
     android:layout_height="match_parent"
     tools:context="com.magicalrice.project.issuesolve.MainActivity">
 
+    <ImageView
+        android:id="@+id/screen_capture"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="30dp"
+        android:background="#1fffff"
+        android:layout_alignParentTop="true"/>
+
     <Button
         android:id="@+id/btn_open"
         android:layout_width="wrap_content"

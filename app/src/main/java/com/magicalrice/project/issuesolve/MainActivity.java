@@ -326,7 +326,7 @@ public class MainActivity extends AppCompatActivity {
             if (!file.exists())
                 file.createNewFile();
             FileOutputStream out = new FileOutputStream(file);
-            mBitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
+            mBitmap.compress(Bitmap.CompressFormat.JPEG, 100, out);
             out.flush();
             out.close();
             Toast.makeText(this.getApplicationContext(), "Screenshot is done.", Toast.LENGTH_SHORT).show();

@@ -2,6 +2,9 @@ package com.magicalrice.project.issuesolve;
 
 import android.app.Application;
 
+import com.iflytek.cloud.SpeechUtility;
+import com.magicalrice.project.issuesolve.config.SpeechConfig;
+
 /**
  * Created by Adolph on 2018/1/11.
  */
@@ -21,5 +24,11 @@ public class ResolveApplication extends Application {
 
     public void setShowResult(boolean showResult) {
         isShowResult = showResult;
+    }
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        SpeechUtility.createUtility(getApplicationContext(), "appid=" + SpeechConfig.APPID);
     }
 }

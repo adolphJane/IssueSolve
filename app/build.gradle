@@ -30,12 +30,10 @@ dependencies {
     testImplementation 'junit:junit:4.12'
     androidTestImplementation 'com.android.support.test:runner:1.0.1'
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.1'
-
     compile 'com.github.yhaolpz:FloatWindow:1.0.8'
-    implementation files('src/main/jniLibs/ocr-sdk.jar')
     //rx
     compile 'com.tbruyelle.rxpermissions2:rxpermissions:0.9.4@aar'
-    compile "io.reactivex.rxjava2:rxjava:2.1.8"
+    compile 'io.reactivex.rxjava2:rxjava:2.1.8'
     compile 'io.reactivex.rxjava2:rxandroid:2.0.1'
     // retrofit2
     compile 'com.squareup.retrofit2:adapter-rxjava2:2.3.0'
@@ -44,4 +42,6 @@ dependencies {
     // network interceptor
     compile 'com.squareup.okhttp3:okhttp:3.9.1'
     compile 'com.squareup.okhttp3:logging-interceptor:3.9.1'
+    implementation files('libs/Msc.jar')
+    implementation files('libs/ocr-sdk.jar')
 }

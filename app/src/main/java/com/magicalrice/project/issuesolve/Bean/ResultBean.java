@@ -1,10 +1,10 @@
-package com.magicalrice.project.issuesolve.http;
+package com.magicalrice.project.issuesolve.Bean;
 
 /**
  * Created by Adolph on 2018/1/10.
  */
 
-public class ResultRes {
+public class ResultBean {
     private String result;
 
     public String getResult() {

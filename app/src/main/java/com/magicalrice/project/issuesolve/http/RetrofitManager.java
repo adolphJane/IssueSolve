@@ -1,5 +1,7 @@
 package com.magicalrice.project.issuesolve.http;
 
+import com.magicalrice.project.issuesolve.config.HttpConfig;
+
 import okhttp3.OkHttpClient;
 import okhttp3.logging.HttpLoggingInterceptor;
 import retrofit2.Retrofit;
@@ -12,25 +14,28 @@ import retrofit2.converter.gson.GsonConverterFactory;
 
 public class RetrofitManager {
     private static RetrofitManager instance = null;
+    private RetrofitService service;
 
     public synchronized static RetrofitManager getInstance() {
         return instance != null ? instance : new RetrofitManager();
     }
 
-    private static OkHttpClient client = new OkHttpClient()
-            .newBuilder()
-            .addInterceptor(new HttpLoggingInterceptor()
-                    .setLevel(HttpLoggingInterceptor.Level.BODY))
-            .build();
-    private static RetrofitService retrofitService = new Retrofit.Builder()
-            .baseUrl("http://47.100.24.16:4300/api/")
-            .client(client)
-            .addConverterFactory(GsonConverterFactory.create())
-            .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
-            .build()
-            .create(RetrofitService.class);
+    private RetrofitManager() {
+        OkHttpClient client = new OkHttpClient()
+                .newBuilder()
+                .addInterceptor(new HttpLoggingInterceptor()
+                        .setLevel(HttpLoggingInterceptor.Level.BODY))
+                .build();
+        service = new Retrofit.Builder()
+                .baseUrl(HttpConfig.BASE_URL)
+                .client(client)
+                .addConverterFactory(GsonConverterFactory.create())
+                .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
+                .build()
+                .create(RetrofitService.class);
+    }
 
-    public static RetrofitService getService() {
-        return retrofitService;
+    public RetrofitService getService() {
+        return service;
     }
 }

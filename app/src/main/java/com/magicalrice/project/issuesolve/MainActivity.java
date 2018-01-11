@@ -5,11 +5,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Canvas;
 import android.graphics.Matrix;
-import android.graphics.Paint;
-import android.graphics.RectF;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
 import android.media.Image;
@@ -17,18 +13,16 @@ import android.media.ImageReader;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
-import android.os.Message;
 import android.support.v7.app.AppCompatActivity;
-import android.os.Bundle;
-import android.text.Html;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.ImageView;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import com.baidu.ocr.sdk.OCR;
@@ -38,7 +32,14 @@ import com.baidu.ocr.sdk.model.AccessToken;
 import com.baidu.ocr.sdk.model.GeneralBasicParams;
 import com.baidu.ocr.sdk.model.GeneralResult;
 import com.baidu.ocr.sdk.model.WordSimple;
-import com.magicalrice.project.issuesolve.http.ResultRes;
+import com.google.gson.Gson;
+import com.iflytek.cloud.RecognizerListener;
+import com.iflytek.cloud.RecognizerResult;
+import com.iflytek.cloud.SpeechConstant;
+import com.iflytek.cloud.SpeechError;
+import com.iflytek.cloud.SpeechRecognizer;
+import com.magicalrice.project.issuesolve.Bean.ResultBean;
+import com.magicalrice.project.issuesolve.Bean.SpeechBean;
 import com.magicalrice.project.issuesolve.http.RetrofitManager;
 import com.tbruyelle.rxpermissions2.RxPermissions;
 import com.yhao.floatwindow.FloatWindow;
@@ -51,7 +52,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 
 import io.reactivex.Observer;
-import io.reactivex.Scheduler;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.Disposable;
 import io.reactivex.schedulers.Schedulers;
@@ -75,8 +75,10 @@ public class MainActivity extends AppCompatActivity {
     private Bitmap mBitmap;
     private String mImagePath, mImageName;
     private RxPermissions rxPer;
-    private String token;
-    private StringBuilder identifiedTitle;
+    private StringBuilder identifiedTitle, answer1, answer2, answer3;
+    private SpeechRecognizer recognizer;
+    private Gson gson;
+    private boolean hasQes, hasAnswer1, hasAnswer2, hasAnswer3;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -88,8 +90,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showPanel() {
-        final ImageView img = new ImageView(this);
-        img.setImageResource(R.drawable.btn_search_layer_list);
+        final View view = View.inflate(getApplicationContext(), R.layout.control_view, null);
+        ImageView img_search = view.findViewById(R.id.btn_search);
+        ImageView img_mic = view.findViewById(R.id.btn_mic);
 
         openAssist = findViewById(R.id.btn_open);
         imgScreenCapture = findViewById(R.id.screen_capture);
@@ -98,9 +101,7 @@ public class MainActivity extends AppCompatActivity {
                 if (!isShow) {
                     FloatWindow.with(getApplicationContext())
                             .setDesktopShow(true)
-                            .setView(img)
-                            .setWidth(Screen.width, 0.15f)
-                            .setHeight(Screen.height, 0.15f)
+                            .setView(view)
                             .setY(Screen.height, 0.6f)
                             .setDesktopShow(true)
                             .setMoveType(MoveType.slide)
@@ -120,11 +121,19 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        img.setOnClickListener(v -> {
+        img_search.setOnClickListener(v -> {
             if (canScreenCapture()) {
                 new Handler().postDelayed(() -> {
                     startScreenCapture();
                 }, 200);
+            }
+        });
+
+        img_mic.setOnClickListener(v -> {
+            if (!recognizer.isListening()) {
+                startSpeech();
+            } else {
+
             }
         });
     }
@@ -141,11 +150,12 @@ public class MainActivity extends AppCompatActivity {
         mScreenDensity = metrics.densityDpi;
         mImageReader = ImageReader.newInstance(mWindowWidth, mWindowHeight, 0x1, 2);
         rxPer = new RxPermissions(this);
+        gson = new Gson();
         isShow = (boolean) SPUtil.getInstance(this).get("isShowController", false);
         OCR.getInstance().initAccessToken(new OnResultListener<AccessToken>() {
             @Override
             public void onResult(AccessToken accessToken) {
-                token = accessToken.getAccessToken();
+
             }
 
             @Override
@@ -153,6 +163,17 @@ public class MainActivity extends AppCompatActivity {
 
             }
         }, getApplicationContext());
+
+        recognizer = SpeechRecognizer.createRecognizer(getApplicationContext(), null);
+        // 语音识别应用领域（：iat，search，video，poi，music）
+        recognizer.setParameter(SpeechConstant.DOMAIN, "iat");
+        // 接收语言中文
+        recognizer.setParameter(SpeechConstant.LANGUAGE, "zh_cn");
+        // 接受的语言是普通话
+        recognizer.setParameter(SpeechConstant.ACCENT, "mandarin ");
+        // 设置听写引擎（云端）
+        recognizer.setParameter(SpeechConstant.ENGINE_TYPE, SpeechConstant.TYPE_CLOUD);
+        recognizer.setParameter(SpeechConstant.VOLUME, "80");
     }
 
     @Override
@@ -173,6 +194,45 @@ public class MainActivity extends AppCompatActivity {
             setUpVirtualDisplay();
         }
     }
+
+    private void startSpeech() {
+        recognizer.startListening(mRecognizer);
+
+    }
+
+    private RecognizerListener mRecognizer = new com.iflytek.cloud.RecognizerListener() {
+        @Override
+        public void onVolumeChanged(int i, byte[] bytes) {
+        }
+
+        @Override
+        public void onBeginOfSpeech() {
+            identifiedTitle = new StringBuilder();
+        }
+
+        @Override
+        public void onEndOfSpeech() {
+            Log.e("sound_test", identifiedTitle.toString());
+            showResult(identifiedTitle.toString());
+        }
+
+        @Override
+        public void onResult(RecognizerResult recognizerResult, boolean b) {
+            SpeechBean bean = gson.fromJson(recognizerResult.getResultString(), SpeechBean.class);
+            Log.e("sound", bean.toString());
+            identifiedTitle.append(bean.toString());
+        }
+
+        @Override
+        public void onError(SpeechError speechError) {
+
+        }
+
+        @Override
+        public void onEvent(int i, int i1, int i2, Bundle bundle) {
+
+        }
+    };
 
     private void setUpMediaProjection() {
         mediaProjection = mpm.getMediaProjection(mResultCode, mResultData);
@@ -239,7 +299,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean checkPersimission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (!rxPer.isGranted(Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
-                rxPer.request(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                rxPer.request(Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.RECORD_AUDIO)
                         .subscribe(granted -> {
                             if (granted) {
                                 Toast.makeText(this.getApplicationContext(), "Permission accessed", Toast.LENGTH_SHORT).show();
@@ -277,8 +337,19 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void ocrSubject() {
+    private void initOCR() {
+        hasQes = false;
+        hasAnswer1 = false;
+        hasAnswer2 = false;
+        hasAnswer3 = false;
         identifiedTitle = new StringBuilder();
+        answer1 = new StringBuilder();
+        answer2 = new StringBuilder();
+        answer3 = new StringBuilder();
+    }
+
+    private void ocrSubject() {
+        initOCR();
         GeneralBasicParams params = new GeneralBasicParams();
         params.setDetectDirection(true);
         params.setImageFile(new File(mImagePath, mImageName));
@@ -289,10 +360,25 @@ public class MainActivity extends AppCompatActivity {
                     identifiedTitle.append(wordSimple.getWords());
                     if (wordSimple.getWords().contains("?")) {
                         String issue = identifiedTitle.substring(identifiedTitle.indexOf(".") + 1, identifiedTitle.indexOf("?"));
+                        hasQes = true;
                         showResult(issue);
                         break;
                     }
-
+                    if (hasQes) {
+                        answer1.append(wordSimple.getWords());
+                        hasAnswer1 = true;
+                    }
+                    if (hasAnswer1) {
+                        answer2.append(wordSimple.getWords());
+                        hasAnswer2 = true;
+                    }
+                    if (hasAnswer2) {
+                        answer3.append(wordSimple.getWords());
+                        hasAnswer3 = true;
+                    }
+                    if (hasAnswer3) {
+                        return;
+                    }
                 }
             }
 
@@ -304,39 +390,29 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showResult(String issue) {
-        RetrofitManager
+        Log.e("issue", issue);
+        RetrofitManager.getInstance()
                 .getService()
                 .getResult(issue)
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
-                .subscribe(new Observer<ResultRes>() {
+                .subscribe(new Observer<ResultBean>() {
                     @Override
                     public void onSubscribe(Disposable d) {
 
                     }
 
                     @Override
-                    public void onNext(ResultRes resultRes) {
-                        handler.removeMessages(1021);
-                        if (!ResolveApplication.getInstance().isShowResult()) {
-                            View view = View.inflate(MainActivity.this, R.layout.float_view, null);
-                            TextView tv = view.findViewById(R.id.tv_result);
-                            tv.setText(resultRes.getResult());
-                            FloatWindow.with(getApplicationContext())
-                                    .setWidth(Screen.width, 1f)
-                                    .setHeight(Screen.height, 0.4f)
-                                    .setX(0)
-                                    .setY(Screen.height, 0.6f)
-                                    .setDesktopShow(true)
-                                    .setView(view)
-                                    .setMoveType(MoveType.inactive)
-                                    .setTag("result")
-                                    .build();
-                            ResolveApplication.getInstance().setShowResult(true);
+                    public void onNext(ResultBean resultBean) {
+                        if (resultBean.getResult().contains(answer1)) {
+                            Toast.makeText(getApplicationContext(), answer1, Toast.LENGTH_LONG).show();
+                        } else if (resultBean.getResult().contains(answer2)) {
+                            Toast.makeText(getApplicationContext(), answer2, Toast.LENGTH_LONG).show();
+                        } else if (resultBean.getResult().contains(answer3)) {
+                            Toast.makeText(getApplicationContext(), answer3, Toast.LENGTH_LONG).show();
                         } else {
-                            handler.sendEmptyMessage(1021);
+                            Toast.makeText(getApplicationContext(), resultBean.getResult(), Toast.LENGTH_LONG).show();
                         }
-
                     }
 
                     @Override
@@ -346,25 +422,10 @@ public class MainActivity extends AppCompatActivity {
 
                     @Override
                     public void onComplete() {
-                        handler.sendEmptyMessageDelayed(1021, 8000);
+
                     }
                 });
     }
-
-    private static Handler handler = new Handler() {
-        @Override
-        public void handleMessage(Message msg) {
-            super.handleMessage(msg);
-            switch (msg.what) {
-                case 1021:
-                    if (FloatWindow.get("result") != null) {
-                        FloatWindow.get("result").hide();
-                        FloatWindow.destroy("result");
-                        ResolveApplication.getInstance().setShowResult(false);
-                    }
-            }
-        }
-    };
 
     private void release() {
         if (virtualDisplay != null) {

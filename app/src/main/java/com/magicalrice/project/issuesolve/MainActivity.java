@@ -19,6 +19,7 @@ import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.Message;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.text.Html;
@@ -27,6 +28,7 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.baidu.ocr.sdk.OCR;
@@ -36,6 +38,8 @@ import com.baidu.ocr.sdk.model.AccessToken;
 import com.baidu.ocr.sdk.model.GeneralBasicParams;
 import com.baidu.ocr.sdk.model.GeneralResult;
 import com.baidu.ocr.sdk.model.WordSimple;
+import com.magicalrice.project.issuesolve.http.ResultRes;
+import com.magicalrice.project.issuesolve.http.RetrofitManager;
 import com.tbruyelle.rxpermissions2.RxPermissions;
 import com.yhao.floatwindow.FloatWindow;
 import com.yhao.floatwindow.MoveType;
@@ -45,6 +49,12 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+
+import io.reactivex.Observer;
+import io.reactivex.Scheduler;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.schedulers.Schedulers;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -79,35 +89,43 @@ public class MainActivity extends AppCompatActivity {
 
     private void showPanel() {
         final ImageView img = new ImageView(this);
-        img.setImageResource(R.drawable.ico_search);
+        img.setImageResource(R.drawable.btn_search_layer_list);
 
         openAssist = findViewById(R.id.btn_open);
         imgScreenCapture = findViewById(R.id.screen_capture);
         openAssist.setOnClickListener(v -> {
-            if (!isShow) {
-                FloatWindow.with(getApplicationContext())
-                        .setDesktopShow(true)
-                        .setView(img)
-                        .setWidth(Screen.width, 0.15f)
-                        .setHeight(Screen.height, 0.15f)
-                        .setY(Screen.height, 0.6f)
-                        .setDesktopShow(true)
-                        .setMoveType(MoveType.slide)
-                        .setTag("subject")
-                        .build();
-                onResume();
-                ((Button) v).setText("Close Assist");
-            } else {
-                FloatWindow.get("subject").hide();
-                FloatWindow.destroy("subject");
-                ((Button) v).setText("Open Assist");
-            }
+            if (checkPersimission()) {
+                if (!isShow) {
+                    FloatWindow.with(getApplicationContext())
+                            .setDesktopShow(true)
+                            .setView(img)
+                            .setWidth(Screen.width, 0.15f)
+                            .setHeight(Screen.height, 0.15f)
+                            .setY(Screen.height, 0.6f)
+                            .setDesktopShow(true)
+                            .setMoveType(MoveType.slide)
+                            .setTag("subject")
+                            .build();
+                    onResume();
+                    ((Button) v).setText("Close Assist");
+                } else {
+                    if (FloatWindow.get("subject") != null) {
+                        FloatWindow.get("subject").hide();
+                        FloatWindow.destroy("subject");
+                        ((Button) v).setText("Open Assist");
+                    }
+                }
 
-            isShow = !isShow;
+                isShow = !isShow;
+            }
         });
 
         img.setOnClickListener(v -> {
-            startScreenCapture();
+            if (canScreenCapture()) {
+                new Handler().postDelayed(() -> {
+                    startScreenCapture();
+                }, 200);
+            }
         });
     }
 
@@ -123,7 +141,7 @@ public class MainActivity extends AppCompatActivity {
         mScreenDensity = metrics.densityDpi;
         mImageReader = ImageReader.newInstance(mWindowWidth, mWindowHeight, 0x1, 2);
         rxPer = new RxPermissions(this);
-
+        isShow = (boolean) SPUtil.getInstance(this).get("isShowController", false);
         OCR.getInstance().initAccessToken(new OnResultListener<AccessToken>() {
             @Override
             public void onResult(AccessToken accessToken) {
@@ -134,7 +152,7 @@ public class MainActivity extends AppCompatActivity {
             public void onError(OCRError ocrError) {
 
             }
-        },getApplicationContext());
+        }, getApplicationContext());
     }
 
     @Override
@@ -153,9 +171,6 @@ public class MainActivity extends AppCompatActivity {
             mResultData = data;
             setUpMediaProjection();
             setUpVirtualDisplay();
-            new Handler().postDelayed(() -> {
-
-            }, 500);
         }
     }
 
@@ -167,8 +182,25 @@ public class MainActivity extends AppCompatActivity {
         virtualDisplay = mediaProjection.createVirtualDisplay("ScreenCapture", mWindowWidth, mWindowHeight, mScreenDensity, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, mImageReader.getSurface(), null, null);
     }
 
+    private boolean canScreenCapture() {
+        if (this == null) {
+            return false;
+        }
+        if (mediaProjection != null) {
+            setUpVirtualDisplay();
+            return true;
+        } else if (mResultCode != 0 && mResultData != null) {
+            setUpMediaProjection();
+            setUpVirtualDisplay();
+            return true;
+        } else {
+            startActivityForResult(mpm.createScreenCaptureIntent(), REQUEST_MEDIA_PROJECTION);
+            return false;
+        }
+    }
+
     private void startScreenCapture() {
-        mImageName = System.currentTimeMillis() + ".png";
+        mImageName = System.currentTimeMillis() + ".jpg";
         Image image = mImageReader.acquireLatestImage();
         if (image == null) {
             return;
@@ -185,7 +217,7 @@ public class MainActivity extends AppCompatActivity {
         mBitmap.copyPixelsFromBuffer(buffer);
         Matrix matrix = new Matrix();
         matrix.postScale(0.5f, 0.5f);
-        mBitmap = Bitmap.createBitmap(mBitmap, 0, 0, width, height, matrix, true);
+        mBitmap = Bitmap.createBitmap(mBitmap, 0, (int) (height * 0.1), width, (int) (height * 0.5), matrix, true);
 
         image.close();
 
@@ -194,7 +226,7 @@ public class MainActivity extends AppCompatActivity {
             imgScreenCapture.setImageBitmap(mBitmap);
         }
 
-        checkPersimission();
+        saveToFile();
     }
 
     private void stopScreenCapture() {
@@ -204,25 +236,24 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void checkPersimission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M){
-            if (!rxPer.isGranted(Manifest.permission.WRITE_EXTERNAL_STORAGE)){
+    private boolean checkPersimission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!rxPer.isGranted(Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
                 rxPer.request(Manifest.permission.WRITE_EXTERNAL_STORAGE)
                         .subscribe(granted -> {
-                            if (granted){
-                                saveToFile();
+                            if (granted) {
+                                Toast.makeText(this.getApplicationContext(), "Permission accessed", Toast.LENGTH_SHORT).show();
                             } else {
                                 Toast.makeText(this.getApplicationContext(), "Permission denied", Toast.LENGTH_SHORT).show();
                             }
                         });
+                return false;
             } else {
-                saveToFile();
+                return true;
             }
         } else {
-            saveToFile();
+            return false;
         }
-
-
     }
 
     private void saveToFile() {
@@ -235,37 +266,33 @@ public class MainActivity extends AppCompatActivity {
             if (!file.exists())
                 file.createNewFile();
             FileOutputStream out = new FileOutputStream(file);
-            mBitmap.compress(Bitmap.CompressFormat.PNG,100,out);
+            mBitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
             out.flush();
             out.close();
             Toast.makeText(this.getApplicationContext(), "Screenshot is done.", Toast.LENGTH_SHORT).show();
+
+            ocrSubject();
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private void transformImage(){
-        if (mBitmap == null){
-            return;
-        }
-
-        int w = mBitmap.getWidth();
-        int h = mBitmap.getHeight();
-
-    }
-
-    private void ocrSubject(){
+    private void ocrSubject() {
         identifiedTitle = new StringBuilder();
         GeneralBasicParams params = new GeneralBasicParams();
         params.setDetectDirection(true);
-        params.setImageFile(new File(mImagePath,mImageName));
+        params.setImageFile(new File(mImagePath, mImageName));
         OCR.getInstance().recognizeGeneralBasic(params, new OnResultListener<GeneralResult>() {
             @Override
             public void onResult(GeneralResult generalResult) {
-                for (WordSimple wordSimple : generalResult.getWordList()){
+                for (WordSimple wordSimple : generalResult.getWordList()) {
                     identifiedTitle.append(wordSimple.getWords());
-                    identifiedTitle.append("\n");
-                    Toast.makeText(MainActivity.this,identifiedTitle,Toast.LENGTH_SHORT).show();
+                    if (wordSimple.getWords().contains("?")) {
+                        String issue = identifiedTitle.substring(identifiedTitle.indexOf(".") + 1, identifiedTitle.indexOf("?"));
+                        showResult(issue);
+                        break;
+                    }
+
                 }
             }
 
@@ -274,5 +301,90 @@ public class MainActivity extends AppCompatActivity {
 
             }
         });
+    }
+
+    private void showResult(String issue) {
+        RetrofitManager
+                .getService()
+                .getResult(issue)
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(new Observer<ResultRes>() {
+                    @Override
+                    public void onSubscribe(Disposable d) {
+
+                    }
+
+                    @Override
+                    public void onNext(ResultRes resultRes) {
+                        handler.removeMessages(1021);
+                        if (!ResolveApplication.getInstance().isShowResult()) {
+                            View view = View.inflate(MainActivity.this, R.layout.float_view, null);
+                            TextView tv = view.findViewById(R.id.tv_result);
+                            tv.setText(resultRes.getResult());
+                            FloatWindow.with(getApplicationContext())
+                                    .setWidth(Screen.width, 1f)
+                                    .setHeight(Screen.height, 0.4f)
+                                    .setX(0)
+                                    .setY(Screen.height, 0.6f)
+                                    .setDesktopShow(true)
+                                    .setView(view)
+                                    .setMoveType(MoveType.inactive)
+                                    .setTag("result")
+                                    .build();
+                            ResolveApplication.getInstance().setShowResult(true);
+                        } else {
+                            handler.sendEmptyMessage(1021);
+                        }
+
+                    }
+
+                    @Override
+                    public void onError(Throwable e) {
+                        Toast.makeText(MainActivity.this, "It`s error", Toast.LENGTH_SHORT).show();
+                    }
+
+                    @Override
+                    public void onComplete() {
+                        handler.sendEmptyMessageDelayed(1021, 8000);
+                    }
+                });
+    }
+
+    private static Handler handler = new Handler() {
+        @Override
+        public void handleMessage(Message msg) {
+            super.handleMessage(msg);
+            switch (msg.what) {
+                case 1021:
+                    if (FloatWindow.get("result") != null) {
+                        FloatWindow.get("result").hide();
+                        FloatWindow.destroy("result");
+                        ResolveApplication.getInstance().setShowResult(false);
+                    }
+            }
+        }
+    };
+
+    private void release() {
+        if (virtualDisplay != null) {
+            virtualDisplay.release();
+            virtualDisplay = null;
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        SPUtil.getInstance(this).put("isShowController", isShow);
+        if (mBitmap != null) {
+            mBitmap.recycle();
+            mBitmap = null;
+        }
+        release();
+        if (mediaProjection != null) {
+            mediaProjection.stop();
+            mediaProjection = null;
+        }
     }
 }

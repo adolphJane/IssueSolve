@@ -16,18 +16,18 @@ public class RetrofitManager {
     private static RetrofitManager instance = null;
     private RetrofitService service;
 
-    public synchronized static RetrofitManager getInstance() {
-        return instance != null ? instance : new RetrofitManager();
+    public synchronized static RetrofitManager getInstance(String baseUrl) {
+        return new RetrofitManager(baseUrl);
     }
 
-    private RetrofitManager() {
+    private RetrofitManager(String baseUrl) {
         OkHttpClient client = new OkHttpClient()
                 .newBuilder()
                 .addInterceptor(new HttpLoggingInterceptor()
                         .setLevel(HttpLoggingInterceptor.Level.BODY))
                 .build();
         service = new Retrofit.Builder()
-                .baseUrl(HttpConfig.BASE_URL)
+                .baseUrl(baseUrl)
                 .client(client)
                 .addConverterFactory(GsonConverterFactory.create())
                 .addCallAdapterFactory(RxJava2CallAdapterFactory.create())

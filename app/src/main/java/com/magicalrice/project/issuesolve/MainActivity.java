@@ -12,11 +12,13 @@ import android.media.Image;
 import android.media.ImageReader;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.support.v7.app.AppCompatActivity;
+import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.View;
@@ -25,21 +27,20 @@ import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.Toast;
 
-import com.baidu.ocr.sdk.OCR;
-import com.baidu.ocr.sdk.OnResultListener;
-import com.baidu.ocr.sdk.exception.OCRError;
-import com.baidu.ocr.sdk.model.AccessToken;
-import com.baidu.ocr.sdk.model.GeneralBasicParams;
-import com.baidu.ocr.sdk.model.GeneralResult;
-import com.baidu.ocr.sdk.model.WordSimple;
 import com.google.gson.Gson;
 import com.iflytek.cloud.RecognizerListener;
 import com.iflytek.cloud.RecognizerResult;
 import com.iflytek.cloud.SpeechConstant;
 import com.iflytek.cloud.SpeechError;
 import com.iflytek.cloud.SpeechRecognizer;
+import com.magicalrice.project.issuesolve.Bean.BaiduTokenBean;
+import com.magicalrice.project.issuesolve.Bean.OCRResultBean;
+import com.magicalrice.project.issuesolve.Bean.OCRWordsBean;
 import com.magicalrice.project.issuesolve.Bean.ResultBean;
 import com.magicalrice.project.issuesolve.Bean.SpeechBean;
+import com.magicalrice.project.issuesolve.Bean.SubjectBean;
+import com.magicalrice.project.issuesolve.config.HttpConfig;
+import com.magicalrice.project.issuesolve.config.OCRConfig;
 import com.magicalrice.project.issuesolve.http.RetrofitManager;
 import com.tbruyelle.rxpermissions2.RxPermissions;
 import com.yhao.floatwindow.FloatWindow;
@@ -49,6 +50,8 @@ import com.yhao.floatwindow.Screen;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.nio.ByteBuffer;
 
 import io.reactivex.Observer;
@@ -79,6 +82,8 @@ public class MainActivity extends AppCompatActivity {
     private SpeechRecognizer recognizer;
     private Gson gson;
     private boolean hasQes, hasAnswer1, hasAnswer2, hasAnswer3;
+    private SubjectBean bean;
+    private String token;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -152,17 +157,6 @@ public class MainActivity extends AppCompatActivity {
         rxPer = new RxPermissions(this);
         gson = new Gson();
         isShow = (boolean) SPUtil.getInstance(this).get("isShowController", false);
-        OCR.getInstance().initAccessToken(new OnResultListener<AccessToken>() {
-            @Override
-            public void onResult(AccessToken accessToken) {
-
-            }
-
-            @Override
-            public void onError(OCRError ocrError) {
-
-            }
-        }, getApplicationContext());
 
         recognizer = SpeechRecognizer.createRecognizer(getApplicationContext(), null);
         // 语音识别应用领域（：iat，search，video，poi，music）
@@ -171,9 +165,39 @@ public class MainActivity extends AppCompatActivity {
         recognizer.setParameter(SpeechConstant.LANGUAGE, "zh_cn");
         // 接受的语言是普通话
         recognizer.setParameter(SpeechConstant.ACCENT, "mandarin ");
-        // 设置听写引擎（云端）
-        recognizer.setParameter(SpeechConstant.ENGINE_TYPE, SpeechConstant.TYPE_CLOUD);
         recognizer.setParameter(SpeechConstant.VOLUME, "80");
+        recognizer.setParameter(SpeechConstant.ENGINE_TYPE, "cloud");
+        recognizer.setParameter(SpeechConstant.VAD_BOS, "4000");
+
+        RetrofitManager.getInstance(HttpConfig.OCR_URL)
+                .getService()
+                .getToken("client_credentials", OCRConfig.APP_ID, OCRConfig.Secret_Key)
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(new Observer<BaiduTokenBean>() {
+
+                    @Override
+                    public void onSubscribe(Disposable d) {
+
+                    }
+
+                    @Override
+                    public void onNext(BaiduTokenBean baiduTokenBean) {
+                        token = baiduTokenBean.getAccess_token();
+                        Log.e("accessToken", token + "---------token");
+                    }
+
+                    @Override
+                    public void onError(Throwable e) {
+
+                    }
+
+                    @Override
+                    public void onComplete() {
+
+                    }
+                });
+
     }
 
     @Override
@@ -260,7 +284,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startScreenCapture() {
-        mImageName = System.currentTimeMillis() + ".jpg";
+        mImageName = System.currentTimeMillis() + ".png";
         Image image = mImageReader.acquireLatestImage();
         if (image == null) {
             return;
@@ -326,7 +350,7 @@ public class MainActivity extends AppCompatActivity {
             if (!file.exists())
                 file.createNewFile();
             FileOutputStream out = new FileOutputStream(file);
-            mBitmap.compress(Bitmap.CompressFormat.JPEG, 100, out);
+            mBitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
             out.flush();
             out.close();
             Toast.makeText(this.getApplicationContext(), "Screenshot is done.", Toast.LENGTH_SHORT).show();
@@ -342,6 +366,7 @@ public class MainActivity extends AppCompatActivity {
         hasAnswer1 = false;
         hasAnswer2 = false;
         hasAnswer3 = false;
+        bean = new SubjectBean();
         identifiedTitle = new StringBuilder();
         answer1 = new StringBuilder();
         answer2 = new StringBuilder();
@@ -350,48 +375,71 @@ public class MainActivity extends AppCompatActivity {
 
     private void ocrSubject() {
         initOCR();
-        GeneralBasicParams params = new GeneralBasicParams();
-        params.setDetectDirection(true);
-        params.setImageFile(new File(mImagePath, mImageName));
-        OCR.getInstance().recognizeGeneralBasic(params, new OnResultListener<GeneralResult>() {
-            @Override
-            public void onResult(GeneralResult generalResult) {
-                for (WordSimple wordSimple : generalResult.getWordList()) {
-                    identifiedTitle.append(wordSimple.getWords());
-                    if (wordSimple.getWords().contains("?")) {
-                        String issue = identifiedTitle.substring(identifiedTitle.indexOf(".") + 1, identifiedTitle.indexOf("?"));
-                        hasQes = true;
-                        showResult(issue);
-                        break;
-                    }
-                    if (hasQes) {
-                        answer1.append(wordSimple.getWords());
-                        hasAnswer1 = true;
-                    }
-                    if (hasAnswer1) {
-                        answer2.append(wordSimple.getWords());
-                        hasAnswer2 = true;
-                    }
-                    if (hasAnswer2) {
-                        answer3.append(wordSimple.getWords());
-                        hasAnswer3 = true;
-                    }
-                    if (hasAnswer3) {
-                        return;
-                    }
-                }
-            }
+        File file = new File(mImagePath, mImageName);
+        String base = SimpleUtil.fileToBase64(file);
 
-            @Override
-            public void onError(OCRError ocrError) {
+        RetrofitManager.getInstance(HttpConfig.OCR_URL)
+                .getService()
+                .getOCR(token, base, "CHN_ENG")
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(new Observer<OCRResultBean>() {
 
-            }
-        });
+                    @Override
+                    public void onSubscribe(Disposable d) {
+
+                    }
+
+                    @Override
+                    public void onNext(OCRResultBean ocrResultBean) {
+                        if (ocrResultBean != null) {
+                            StringBuilder words = new StringBuilder();
+                            boolean hasQes = false, hasAnswer1 = false, hasAnswer2 = false, hasAnswer3 = false;
+                            for (int i = 0; i < ocrResultBean.getWords_result_num(); i++) {
+                                OCRWordsBean oBean = ocrResultBean.getWords_result().get(i);
+                                words.append(oBean.getWords());
+                                if (oBean.getWords().contains("?")) {
+                                    hasQes = true;
+                                    bean.setIssue(words.substring(words.indexOf(".") + 1, words.indexOf("?")));
+                                    showResult(bean.getIssue());
+                                }
+                                if (hasQes) {
+                                    bean.setAnswer1(oBean.getWords());
+                                    hasAnswer1 = true;
+                                }
+                                if (hasAnswer1) {
+                                    bean.setAnswer2(oBean.getWords());
+                                    hasAnswer2 = true;
+                                }
+                                if (hasAnswer2) {
+                                    bean.setAnswer3(oBean.getWords());
+                                    hasAnswer3 = true;
+                                }
+                                if (hasAnswer3) {
+                                    return;
+                                }
+
+                            }
+                        }
+                    }
+
+                    @Override
+                    public void onError(Throwable e) {
+                        Toast.makeText(MainActivity.this, "It`s error", Toast.LENGTH_SHORT).show();
+                    }
+
+                    @Override
+                    public void onComplete() {
+
+                    }
+                });
+
+        Log.e("subject", bean.toString());
     }
 
     private void showResult(String issue) {
         Log.e("issue", issue);
-        RetrofitManager.getInstance()
+        RetrofitManager.getInstance(HttpConfig.BASE_URL)
                 .getService()
                 .getResult(issue)
                 .subscribeOn(Schedulers.io())
@@ -404,11 +452,11 @@ public class MainActivity extends AppCompatActivity {
 
                     @Override
                     public void onNext(ResultBean resultBean) {
-                        if (resultBean.getResult().contains(answer1)) {
+                        if (!TextUtils.isEmpty(answer1) && resultBean.getResult().contains(answer1)) {
                             Toast.makeText(getApplicationContext(), answer1, Toast.LENGTH_LONG).show();
-                        } else if (resultBean.getResult().contains(answer2)) {
+                        } else if (!TextUtils.isEmpty(answer2) && resultBean.getResult().contains(answer2)) {
                             Toast.makeText(getApplicationContext(), answer2, Toast.LENGTH_LONG).show();
-                        } else if (resultBean.getResult().contains(answer3)) {
+                        } else if (!TextUtils.isEmpty(answer3) && resultBean.getResult().contains(answer3)) {
                             Toast.makeText(getApplicationContext(), answer3, Toast.LENGTH_LONG).show();
                         } else {
                             Toast.makeText(getApplicationContext(), resultBean.getResult(), Toast.LENGTH_LONG).show();

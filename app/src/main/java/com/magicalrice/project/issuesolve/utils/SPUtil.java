@@ -1,4 +1,4 @@
-package com.magicalrice.project.issuesolve;
+package com.magicalrice.project.issuesolve.utils;
 
 import android.content.Context;
 import android.content.SharedPreferences;

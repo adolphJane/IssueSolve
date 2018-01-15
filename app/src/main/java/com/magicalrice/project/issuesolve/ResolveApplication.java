@@ -15,7 +15,7 @@ public class ResolveApplication extends Application {
     private static ResolveApplication application;
 
     public static ResolveApplication getInstance() {
-        return application == null ? new ResolveApplication() : application;
+        return application;
     }
 
     public boolean isShowResult() {
@@ -29,6 +29,7 @@ public class ResolveApplication extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
+        application = this;
         SpeechUtility.createUtility(getApplicationContext(), "appid=" + SpeechConfig.APPID);
     }
 }

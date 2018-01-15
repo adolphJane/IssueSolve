@@ -12,7 +12,6 @@ import android.media.Image;
 import android.media.ImageReader;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
@@ -42,6 +41,9 @@ import com.magicalrice.project.issuesolve.Bean.SubjectBean;
 import com.magicalrice.project.issuesolve.config.HttpConfig;
 import com.magicalrice.project.issuesolve.config.OCRConfig;
 import com.magicalrice.project.issuesolve.http.RetrofitManager;
+import com.magicalrice.project.issuesolve.utils.CToast;
+import com.magicalrice.project.issuesolve.utils.SPUtil;
+import com.magicalrice.project.issuesolve.utils.SimpleUtil;
 import com.tbruyelle.rxpermissions2.RxPermissions;
 import com.yhao.floatwindow.FloatWindow;
 import com.yhao.floatwindow.MoveType;
@@ -50,8 +52,6 @@ import com.yhao.floatwindow.Screen;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.net.URLEncoder;
 import java.nio.ByteBuffer;
 
 import io.reactivex.Observer;
@@ -78,10 +78,9 @@ public class MainActivity extends AppCompatActivity {
     private Bitmap mBitmap;
     private String mImagePath, mImageName;
     private RxPermissions rxPer;
-    private StringBuilder identifiedTitle, answer1, answer2, answer3;
+    private StringBuilder identifiedTitle;
     private SpeechRecognizer recognizer;
     private Gson gson;
-    private boolean hasQes, hasAnswer1, hasAnswer2, hasAnswer3;
     private SubjectBean bean;
     private String token;
 
@@ -232,12 +231,14 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onBeginOfSpeech() {
             identifiedTitle = new StringBuilder();
+            bean = new SubjectBean();
         }
 
         @Override
         public void onEndOfSpeech() {
             Log.e("sound_test", identifiedTitle.toString());
-            showResult(identifiedTitle.toString());
+            bean.setIssue(identifiedTitle.toString());
+            showResult(bean.getIssue());
         }
 
         @Override
@@ -322,7 +323,7 @@ public class MainActivity extends AppCompatActivity {
 
     private boolean checkPersimission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!rxPer.isGranted(Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
+            if (!rxPer.isGranted(Manifest.permission.WRITE_EXTERNAL_STORAGE) || !rxPer.isGranted(Manifest.permission.RECORD_AUDIO)) {
                 rxPer.request(Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.RECORD_AUDIO)
                         .subscribe(granted -> {
                             if (granted) {
@@ -331,7 +332,11 @@ public class MainActivity extends AppCompatActivity {
                                 Toast.makeText(this.getApplicationContext(), "Permission denied", Toast.LENGTH_SHORT).show();
                             }
                         });
-                return false;
+                if (!rxPer.isGranted(Manifest.permission.WRITE_EXTERNAL_STORAGE) || !rxPer.isGranted(Manifest.permission.RECORD_AUDIO)) {
+                    return false;
+                } else {
+                    return true;
+                }
             } else {
                 return true;
             }
@@ -353,7 +358,6 @@ public class MainActivity extends AppCompatActivity {
             mBitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
             out.flush();
             out.close();
-            Toast.makeText(this.getApplicationContext(), "Screenshot is done.", Toast.LENGTH_SHORT).show();
 
             ocrSubject();
         } catch (IOException e) {
@@ -362,15 +366,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void initOCR() {
-        hasQes = false;
-        hasAnswer1 = false;
-        hasAnswer2 = false;
-        hasAnswer3 = false;
         bean = new SubjectBean();
         identifiedTitle = new StringBuilder();
-        answer1 = new StringBuilder();
-        answer2 = new StringBuilder();
-        answer3 = new StringBuilder();
     }
 
     private void ocrSubject() {
@@ -394,31 +391,23 @@ public class MainActivity extends AppCompatActivity {
                     public void onNext(OCRResultBean ocrResultBean) {
                         if (ocrResultBean != null) {
                             StringBuilder words = new StringBuilder();
-                            boolean hasQes = false, hasAnswer1 = false, hasAnswer2 = false, hasAnswer3 = false;
                             for (int i = 0; i < ocrResultBean.getWords_result_num(); i++) {
                                 OCRWordsBean oBean = ocrResultBean.getWords_result().get(i);
                                 words.append(oBean.getWords());
                                 if (oBean.getWords().contains("?")) {
-                                    hasQes = true;
                                     bean.setIssue(words.substring(words.indexOf(".") + 1, words.indexOf("?")));
+                                    if (i + 1 < ocrResultBean.getWords_result_num() && ocrResultBean.getWords_result().get(i + 1).getWords() != null) {
+                                        bean.setAnswer1(ocrResultBean.getWords_result().get(i + 1).getWords());
+                                    }
+                                    if (i + 2 < ocrResultBean.getWords_result_num() && ocrResultBean.getWords_result().get(i + 2).getWords() != null) {
+                                        bean.setAnswer2(ocrResultBean.getWords_result().get(i + 2).getWords());
+                                    }
+                                    if (i + 3 < ocrResultBean.getWords_result_num() && ocrResultBean.getWords_result().get(i + 3).getWords() != null) {
+                                        bean.setAnswer3(ocrResultBean.getWords_result().get(i + 3).getWords());
+                                    }
                                     showResult(bean.getIssue());
+                                    break;
                                 }
-                                if (hasQes) {
-                                    bean.setAnswer1(oBean.getWords());
-                                    hasAnswer1 = true;
-                                }
-                                if (hasAnswer1) {
-                                    bean.setAnswer2(oBean.getWords());
-                                    hasAnswer2 = true;
-                                }
-                                if (hasAnswer2) {
-                                    bean.setAnswer3(oBean.getWords());
-                                    hasAnswer3 = true;
-                                }
-                                if (hasAnswer3) {
-                                    return;
-                                }
-
                             }
                         }
                     }
@@ -439,6 +428,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void showResult(String issue) {
         Log.e("issue", issue);
+        Log.e("bean", bean.toString());
         RetrofitManager.getInstance(HttpConfig.BASE_URL)
                 .getService()
                 .getResult(issue)
@@ -452,20 +442,20 @@ public class MainActivity extends AppCompatActivity {
 
                     @Override
                     public void onNext(ResultBean resultBean) {
-                        if (!TextUtils.isEmpty(answer1) && resultBean.getResult().contains(answer1)) {
-                            Toast.makeText(getApplicationContext(), answer1, Toast.LENGTH_LONG).show();
-                        } else if (!TextUtils.isEmpty(answer2) && resultBean.getResult().contains(answer2)) {
-                            Toast.makeText(getApplicationContext(), answer2, Toast.LENGTH_LONG).show();
-                        } else if (!TextUtils.isEmpty(answer3) && resultBean.getResult().contains(answer3)) {
-                            Toast.makeText(getApplicationContext(), answer3, Toast.LENGTH_LONG).show();
+                        if (!TextUtils.isEmpty(bean.getAnswer1()) && resultBean.getResult().contains(bean.getAnswer1())) {
+                            CToast.getInstance().setDuration(CToast.CTOAST_LONG).showToast(bean.getAnswer1(), resultBean.getResult());
+                        } else if (!TextUtils.isEmpty(bean.getAnswer2()) && resultBean.getResult().contains(bean.getAnswer2())) {
+                            CToast.getInstance().setDuration(CToast.CTOAST_LONG).showToast(bean.getAnswer2(), resultBean.getResult());
+                        } else if (!TextUtils.isEmpty(bean.getAnswer3()) && resultBean.getResult().contains(bean.getAnswer3())) {
+                            CToast.getInstance().setDuration(CToast.CTOAST_LONG).showToast(bean.getAnswer3(), resultBean.getResult());
                         } else {
-                            Toast.makeText(getApplicationContext(), resultBean.getResult(), Toast.LENGTH_LONG).show();
+                            CToast.getInstance().setDuration(CToast.CTOAST_LONG).showToast("答案不确定", resultBean.getResult());
                         }
                     }
 
                     @Override
                     public void onError(Throwable e) {
-                        Toast.makeText(MainActivity.this, "It`s error", Toast.LENGTH_SHORT).show();
+                        CToast.getInstance().showToast("It`s error", "");
                     }
 
                     @Override

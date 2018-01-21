@@ -10,7 +10,6 @@ import android.widget.Toast;
 import com.magicalrice.project.issuesolve.R;
 import com.magicalrice.project.issuesolve.ResolveApplication;
 
-import java.io.ObjectInputStream;
 import java.lang.reflect.Field;
 
 /**

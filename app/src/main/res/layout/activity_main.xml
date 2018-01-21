@@ -6,23 +6,33 @@
     android:layout_height="match_parent"
     tools:context="com.magicalrice.project.issuesolve.MainActivity">
 
+    <Button
+        android:id="@+id/btn_open"
+        android:layout_width="120dp"
+        android:layout_height="wrap_content"
+        android:text="打开辅助弹窗"
+        android:textAllCaps="false"
+        android:gravity="center"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="80dp" />
+
+    <Button
+        android:id="@+id/btn_clear"
+        android:layout_width="120dp"
+        android:layout_height="wrap_content"
+        android:text="清除缓存"
+        android:textAllCaps="false"
+        android:gravity="center"
+        android:layout_centerHorizontal="true"
+        android:layout_below="@id/btn_open"
+        android:layout_marginTop="30dp" />
+
     <ImageView
         android:id="@+id/screen_capture"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_centerHorizontal="true"
-        android:layout_marginTop="30dp"
+        android:layout_centerInParent="true"
         android:background="#1fffff"
-        android:layout_alignParentTop="true"/>
-
-    <Button
-        android:id="@+id/btn_open"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Open Assist"
-        android:textAllCaps="false"
-        android:layout_centerHorizontal="true"
-        android:layout_alignParentBottom="true"
-        android:layout_marginBottom="100dp"/>
+        android:layout_alignParentTop="true" />
 
 </RelativeLayout>
